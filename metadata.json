@@ -1,0 +1,6 @@
+{
+  "name": "Builders Playground",
+  "description": "The ultimate competitive ecosystem for high-performance builders and gamers. Speed-run challenges, brutalist design showdowns, and tactical gaming tournaments.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
