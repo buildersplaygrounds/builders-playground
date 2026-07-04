@@ -49,9 +49,16 @@ export default function LoginView({ onLoginSuccess, redirectMessage, onClearRedi
       return;
     }
 
-    if (isRegister && (!phoneNumber || phoneNumber.trim() === '')) {
-      setAuthError('Mobile phone number is required.');
-      return;
+    if (isRegister) {
+      if (!phoneNumber || phoneNumber.trim() === '') {
+        setAuthError('Mobile phone number is required.');
+        return;
+      }
+      const cleanPhone = phoneNumber.replace(/\D/g, '');
+      if (cleanPhone.length !== 10) {
+        setAuthError('Please enter a valid 10-digit mobile number.');
+        return;
+      }
     }
 
     if (!password || password.length < 4) {
@@ -83,7 +90,7 @@ export default function LoginView({ onLoginSuccess, redirectMessage, onClearRedi
           .insert({
             id: signUpData.user.id,
             username: username,
-            phone_number: phoneNumber,
+            phone_number: phoneNumber.replace(/\D/g, ''),
             role: role
           });
 
@@ -101,7 +108,8 @@ export default function LoginView({ onLoginSuccess, redirectMessage, onClearRedi
             isLoggedIn: true,
             personnelId: username,
             email: email,
-            role: role
+            role: role,
+            phoneNumber: phoneNumber.replace(/\D/g, '')
           });
         }, 800);
 
@@ -121,7 +129,7 @@ export default function LoginView({ onLoginSuccess, redirectMessage, onClearRedi
         // Fetch profile
         const { data: profileData } = await supabase
           .from('profiles')
-          .select('username, role')
+          .select('username, role, phone_number')
           .eq('id', signInData.user.id)
           .single();
 
@@ -142,7 +150,8 @@ export default function LoginView({ onLoginSuccess, redirectMessage, onClearRedi
             isLoggedIn: true,
             personnelId: username,
             email: email,
-            role: role
+            role: role,
+            phoneNumber: profileData?.phone_number || ''
           });
         }, 800);
       }

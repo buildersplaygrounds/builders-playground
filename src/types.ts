@@ -43,6 +43,7 @@ export interface UserSession {
   personnelId: string;
   email: string;
   role: string;
+  phoneNumber?: string;
 }
 
 export type ViewType = 'home' | 'events' | 'newsletter' | 'about' | 'contact' | 'login';

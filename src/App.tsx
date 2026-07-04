@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, FormEvent } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ViewType, UserSession } from './types';
 import Header from './components/Header';
@@ -11,6 +11,25 @@ import ContactView from './components/ContactView';
 import LoginView from './components/LoginView';
 import { supabase } from './lib/supabaseClient';
 
+const coolGenzPrefixes = [
+  'neo', 'cyber', 'retro', 'hyper', 'vapor', 'pixel', 'flux', 'sonic', 'orbit', 'meta',
+  'static', 'vector', 'alpha', 'zen', 'apex', 'glide', 'pulse', 'sync', 'zero', 'chroma',
+  'cosmic', 'prism', 'echo', 'phantom', 'vortex', 'helix', 'turbo', 'lurk', 'giga', 'sigma'
+];
+
+const coolGenzSuffixes = [
+  'vibe', 'ghost', 'aura', 'flow', 'grid', 'core', 'wave', 'craft', 'mode', 'hacker',
+  'maker', 'zephyr', 'nova', 'shift', 'spark', 'dash', 'warp', 'zoom', 'hype', 'pixel',
+  'nexus', 'realm', 'surge', 'glow', 'haze', 'glitch', 'drift', 'fuse', 'axis', 'pulse'
+];
+
+function generateGenzUsername(): string {
+  const p = coolGenzPrefixes[Math.floor(Math.random() * coolGenzPrefixes.length)];
+  const s = coolGenzSuffixes[Math.floor(Math.random() * coolGenzSuffixes.length)];
+  const num = Math.floor(10 + Math.random() * 90);
+  return `${p}.${s}_${num}`;
+}
+
 export default function App() {
   const [activeView, setActiveView] = useState<ViewType>('home');
   const [eventsTab, setEventsTab] = useState<'upcoming' | 'past'>('upcoming');
@@ -18,10 +37,16 @@ export default function App() {
     isLoggedIn: false,
     personnelId: '',
     email: '',
-    role: ''
+    role: '',
+    phoneNumber: ''
   });
   const [loginRedirectMessage, setLoginRedirectMessage] = useState<string>('');
   const [isAppLoading, setIsAppLoading] = useState(true);
+
+  // Mandatory Phone Collection States
+  const [phoneInput, setPhoneInput] = useState('');
+  const [phoneError, setPhoneError] = useState('');
+  const [isSubmittingPhone, setIsSubmittingPhone] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -44,7 +69,7 @@ export default function App() {
       if (currentSession) {
         fetchUserProfile(currentSession.user.id, currentSession.user.email || '');
       } else {
-        setSession({ isLoggedIn: false, personnelId: '', email: '', role: '' });
+        setSession({ isLoggedIn: false, personnelId: '', email: '', role: '', phoneNumber: '' });
       }
     });
 
@@ -55,7 +80,7 @@ export default function App() {
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('username, role')
+        .select('username, role, phone_number')
         .eq('id', userId)
         .single();
 
@@ -66,14 +91,16 @@ export default function App() {
           isLoggedIn: true,
           personnelId: fallBackUsername,
           email: email,
-          role: 'ELITE_BUILDER'
+          role: 'ELITE_BUILDER',
+          phoneNumber: ''
         });
       } else if (data) {
         setSession({
           isLoggedIn: true,
           personnelId: data.username,
           email: email,
-          role: data.role
+          role: data.role,
+          phoneNumber: data.phone_number || ''
         });
       }
     } catch (e) {
@@ -88,8 +115,73 @@ export default function App() {
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
-    setSession({ isLoggedIn: false, personnelId: '', email: '', role: '' });
+    setSession({ isLoggedIn: false, personnelId: '', email: '', role: '', phoneNumber: '' });
     setActiveView('home');
+  };
+
+  const handlePhoneSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    const cleanPhone = phoneInput.replace(/\D/g, '');
+    if (cleanPhone.length !== 10) {
+      setPhoneError('Please enter a valid 10-digit phone number.');
+      return;
+    }
+    setIsSubmittingPhone(true);
+    setPhoneError('');
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('No active user session found.');
+
+      const userId = user.id;
+      const userEmail = user.email || '';
+
+      // Check if profile exists
+      const { data: existingProfile } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('id', userId)
+        .single();
+
+      if (!existingProfile) {
+        // Create profile (Insert) for first-time login
+        const newUsername = generateGenzUsername();
+        const newRole = 'ELITE_BUILDER';
+        const { error: insertError } = await supabase
+          .from('profiles')
+          .insert({
+            id: userId,
+            username: newUsername,
+            phone_number: cleanPhone,
+            role: newRole
+          });
+        if (insertError) throw insertError;
+        
+        setSession({
+          isLoggedIn: true,
+          personnelId: newUsername,
+          email: userEmail,
+          role: newRole,
+          phoneNumber: cleanPhone
+        });
+      } else {
+        // Update existing profile with phone number
+        const { error: updateError } = await supabase
+          .from('profiles')
+          .update({ phone_number: cleanPhone })
+          .eq('id', userId);
+        if (updateError) throw updateError;
+
+        setSession(prev => ({
+          ...prev,
+          phoneNumber: cleanPhone
+        }));
+      }
+    } catch (err: any) {
+      console.error('Error updating phone number:', err);
+      setPhoneError(err.message || 'Failed to sync phone number. Try again.');
+    } finally {
+      setIsSubmittingPhone(false);
+    }
   };
 
   const handleNavigateToLoginWithRedirect = (message: string) => {
@@ -234,6 +326,78 @@ export default function App() {
 
           {/* Footer element - Persistent */}
           <Footer setActiveView={handleCustomViewChange} />
+
+          {/* Mandatory Phone Number Overlay */}
+          <AnimatePresence>
+            {session.isLoggedIn && !session.phoneNumber && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-[10000] flex items-center justify-center bg-brand-charcoal/80 backdrop-blur-md p-4"
+              >
+                <motion.div
+                  initial={{ scale: 0.95, y: 10 }}
+                  animate={{ scale: 1, y: 0 }}
+                  className="w-full max-w-md bg-white border border-brand-charcoal p-8 sm:p-10 shadow-2xl relative text-center"
+                >
+                  <div className="flex justify-center mb-4 text-brand-red">
+                    <div className="w-12 h-12 rounded-full bg-brand-red/10 flex items-center justify-center">
+                      <span className="text-xl">📞</span>
+                    </div>
+                  </div>
+
+                  <h2 className="font-display font-black italic text-2xl sm:text-3xl text-brand-charcoal uppercase leading-[1.1] tracking-tighter mb-2">
+                    PHONE VERIFICATION REQUIRED
+                  </h2>
+                  <p className="font-mono text-[10px] font-bold text-brand-charcoal/50 tracking-wider uppercase mb-6 leading-relaxed">
+                    To maintain ecosystem integrity, all operators must link a verified 10-digit mobile phone number.
+                  </p>
+
+                  <form onSubmit={handlePhoneSubmit} className="space-y-6 text-left">
+                    <div>
+                      <label className="font-mono text-[9px] font-bold text-brand-red tracking-widest uppercase block mb-1">
+                        MOBILE PHONE NUMBER
+                      </label>
+                      <div className="flex items-center border-b border-brand-charcoal/10 py-2 focus-within:border-brand-red transition-colors">
+                        <span className="text-brand-charcoal/30 mr-3 text-sm">📱</span>
+                        <input
+                          type="tel"
+                          placeholder="Enter 10-digit mobile number"
+                          value={phoneInput}
+                          onChange={(e) => {
+                            const val = e.target.value.replace(/\D/g, '');
+                            if (val.length <= 10) setPhoneInput(val);
+                          }}
+                          className="w-full bg-transparent text-brand-charcoal placeholder-brand-charcoal/20 font-display font-bold italic tracking-wider text-base uppercase focus:outline-none"
+                          disabled={isSubmittingPhone}
+                        />
+                      </div>
+                    </div>
+
+                    {phoneError && (
+                      <p className="font-mono text-[10px] font-bold text-brand-red uppercase tracking-wider">
+                        ⚠️ {phoneError}
+                      </p>
+                    )}
+
+                    <button
+                      type="submit"
+                      disabled={isSubmittingPhone}
+                      className="w-full bg-brand-red hover:bg-brand-red-dark disabled:bg-brand-red/50 text-white font-display font-black italic text-lg tracking-wider py-3.5 shadow-md hover:translate-y-[-1px] transition-all flex items-center justify-center gap-2 cursor-pointer uppercase chamfer-clip-br"
+                    >
+                      {isSubmittingPhone ? 'SYNCHRONIZING...' : 'CONFIRM TELEMETRY'} <span className="text-sm">⚡</span>
+                    </button>
+                  </form>
+
+                  {/* Visual Brutalist Accents */}
+                  <div className="absolute top-2 right-2 font-mono text-[8px] text-brand-charcoal/20 select-none">
+                    SYS_V2.0.4 // SECURE
+                  </div>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </motion.div>
       )}
     </AnimatePresence>
